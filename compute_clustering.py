@@ -23,7 +23,6 @@ from sklearn.utils import check_X_y
 from sklearn.preprocessing import LabelEncoder
 #import pdb
 
-from . import canf
 
 """TODO: 
         - control functions' variables
@@ -46,7 +45,6 @@ def new_silhouette_samples(X, labels, metric='precomputed', **kwds):
     labels = le.fit_transform(labels)
     unsupervised.check_number_of_labels(len(le.classes_), X.shape[0])
     
-    #distances = pairwise_distances(X, metric=metric, **kwds)
     unique_labels = le.classes_
     n_samples_per_label = np.bincount(labels, minlength=len(unique_labels))
 
@@ -133,35 +131,10 @@ class ComputeClustering:
         self.epsilon = epsilon
         return
 
-    # TODO: check function
     def get_kth(self, row, index):
         kth_el = np.sort(row)[index]
         return kth_el
-    """
-    def compute_silhouette(self):
-        # remove noise points and extract a new distance matrix without them
-        index_mask = self.labels != -1
-        labels_indexes = np.array(range(len(self.labels)))[index_mask]
-        no_noise_labels = np.array(self.labels)[index_mask]
-        no_noise_dist_matrix = self.extract_sub_matrix(labels_indexes, index_mask,
-                                                      self.D, mmap_name = 'silh_matrix')
-        try:
-            # Compute silhouette for each point != noise
-            result = silhouette_samples(X=no_noise_dist_matrix, labels=no_noise_labels,
-                                        metric='precomputed')
-            # Extract a mean value of silhouette for each cluster
-            mean_silhouette_labels = dict()
-            for l in set(no_noise_labels):
-                label_mask = np.asarray(no_noise_labels) != l  # masking (hiding) all elements different from label l
-                masked_result = ma.masked_array(result, mask=label_mask)
-                mean_silhouette_labels[l] = masked_result.mean()
-            self.mean_silhouette_labels = mean_silhouette_labels
-        finally:
-            no_noise_dist_matrix_filename = no_noise_dist_matrix.filename
-            del no_noise_dist_matrix
-            os.remove(no_noise_dist_matrix_filename)
-        return self.mean_silhouette_labels, result"""
-    
+
     def compute_silhouette(self):
         result = unsupervised.silhouette_samples(self.D, self.labels, metric='precomputed')
         mean_silhouette_labels = dict()        
@@ -214,32 +187,12 @@ class ComputeClustering:
     def extract_sub_matrix(self, cl_indexes, index_mask, distance_matrix, mmap_name = 'cluster_matrix'):
         """ Extract a reduced version of the complete distance matrix, looking at the
         elements belonging to the actual cluster"""
-        # cluster_matrix = np.zeros( (len(cl_indexes), len(cl_indexes) ), dtype='float16')
         cluster_map = np.memmap(self.output_folder + "/results/" + mmap_name, 
                                 dtype='float16', mode='w+',
                                 shape=(len(cl_indexes), len(cl_indexes)))
 
-        #cluster_map = self.D[index_mask]
         cluster_map[:] = self.D[:,index_mask][index_mask]
         print(self.D[index_mask])
-        """
-        matrix_upper_bound = 5000 # use it to periodically store results on disk
-        cluster_map_section = cluster_map[:matrix_upper_bound]
-        to_compute_section = list()
-        for i, index in enumerate(cl_indexes):
-            if i % 5000 == 0 and i != 0:
-                cluster_map_section  = np.array(to_compute_section)
-                cluster_map.flush()
-                del cluster_map
-                matrix_upper_bound = i + 5000 if (i + 5000) < len(cl_indexes) else len(cl_indexes)
-                cluster_map = np.memmap(self.output_folder + "/results/" + mmap_name, 
-                        dtype='float16', mode='r+',
-                        shape=(len(cl_indexes), len(cl_indexes)))
-                cluster_map_section = cluster_map[i:matrix_upper_bound]
-            to_compute_section.append(np.asarray(distance_matrix[index, :])[index_mask])
-        cluster_map_section = np.array(to_compute_section)
-        cluster_map.flush()
-        """
         cluster_map.flush()
         print('cluster_map', cluster_map)
         del cluster_map
@@ -262,8 +215,6 @@ class ComputeClustering:
                                          'cluster_label': self.labels,\
                                          'mean_intracluster_distance': self.final_element_mean_intracluster_distance()})
         df_clusters.to_csv(os.path.join(self.output_folder, 'results', 'clusters.csv'))
-        #df_stats = pd.DataFrame(self.clustering_stats)
-        #df_stats.to_csv(os.path.join(self.output_folder, 'results', 'stats.csv'))
 
     def compute_kdist_graph(self, distance_matrix, min_points):
         # process to order matrix rows by increasing distance
@@ -273,9 +224,6 @@ class ComputeClustering:
         kth_values = self.extract_neighbors(distance_matrix, min_points)
         # choose epsilon
         elected_epsilon = math.ceil(kth_values[threshold] * 100) / 100
-        # plot k-dist graph
-        # n_elements = list(range(1, len(kth_values) + 1))
-        # plot_fig(min_points, n_elements, kth_values, elected_epsilon)
         logging.debug("Elected epsilon: %f" % elected_epsilon)
         return elected_epsilon
 
@@ -290,7 +238,6 @@ class ComputeClustering:
     # Clustering Methods
     ###########################################################################
 
-    # OK!
     def compute_dbscan(self, algorithm='auto'):
         """ Return labels list for elements which distance matrix was created for"""
 
@@ -306,11 +253,6 @@ class ComputeClustering:
                     min_samples=self.min_points,
                     algorithm=algorithm).fit(self.D)
 
-
-        ## extract infos on core points
-        # self.core_samples_mask = np.zeros_like(db.labels_, dtype=bool)
-        # self.core_samples_mask[db.core_sample_indices_] = True
-
         self.labels = db.labels_.astype(int)
 
         logging.debug("Finished computing DBSCAN," 
@@ -318,9 +260,6 @@ class ComputeClustering:
                                        fromtimestamp(time.time()).
                                        strftime('%Y-%m-%d %H:%M:%S')))
         logging.debug(str(db))
-
-        # self.extract_stats()
-
         return self.labels #, self.clustering_stats
 
 
@@ -329,9 +268,6 @@ class ComputeClustering:
                       + "at {0}".format(datetime.datetime.
                                        fromtimestamp(time.time()).
                                        strftime('%Y-%m-%d %H:%M:%S'))) 
-
-        #cores, labels = optics(self.D, min_samples=self.min_points, \
-        #                       metric='precomputed', algorithm='brute')
         
         opt = optics(self.D, self.epsilon, self.min_points, \
                     data_type='distance_matrix', ccore=False)
@@ -350,7 +286,8 @@ class ComputeClustering:
                                        fromtimestamp(time.time()).
                                        strftime('%Y-%m-%d %H:%M:%S')))       
         return self.labels
-    # OK!
+
+    
     def compute_hdbscan(self):
         logging.debug("Starting computing HDBSCAN," 
                       + "at {0}".format(datetime.datetime.
@@ -370,11 +307,8 @@ class ComputeClustering:
                                        strftime('%Y-%m-%d %H:%M:%S')))
         logging.debug(str(hdb))
 
-        # self.extract_stats()
+        return self.labels
 
-        return self.labels #, self.clustering_stats
-
-    # TODO: check function
     def compute_lenta_dbscan(self, algorithm='auto', allowed_hierarchic_iterations=10):
         """ Extract the silhouette value for every cluster, and iterate the
         clustering algorithms over those cluster with negative silhouette values"""
@@ -402,14 +336,12 @@ class ComputeClustering:
         initial_max_label = max(self.labels)
 
         logging.debug("Initially extracted {0} clusters".format(sum(x is not -1 for x in set(self.labels))))
-        # greatest_label = max(self.labels)
 
         self.compute_silhouette()
 
         if max(self.labels) > 0:
             flag = True
             label = 0
-            # allowed_hierarchic_iterations = 10
             while flag:
                 cluster_matrix = np.array([])
                 file_mmap = None
@@ -419,10 +351,6 @@ class ComputeClustering:
 
                 # compute silhouette formula
                 logging.debug("CLUSTER {0}".format(label))
-                #if label > initial_max_label:
-                #    self.compute_silhouette()
-
-                # stats.append(silhouette_labels[label])
 
                 logging.debug("Number of elements in the cluster:" 
                                + "%i" % np.count_nonzero(self.labels == label))
@@ -445,7 +373,6 @@ class ComputeClustering:
                                              algorithm=algorithm).fit(cluster_matrix)
 
                             db_hier_labels = db_hier.labels_
-                            # core = db_hier.core_sample_indices_
 
                             logging.debug("From cluster {0} ".format(label) +
                                           "extracted {0} clusters".format(max(db_hier_labels) + 1))
@@ -472,15 +399,11 @@ class ComputeClustering:
                                 logging.debug("re-compute silhouette")
                                 logging.debug(os.listdir(self.output_folder + '/results'))
                                 self.compute_silhouette()
-                            # file_mmap = cluster_matrix.filename
                         finally:
                             logging.debug("Finally " + str(os.listdir(self.output_folder + '/results')))
                             cluster_matrix_filename = cluster_matrix.filename
                             del cluster_matrix
                             os.remove(cluster_matrix_filename)
-                            # if cluster_matrix.shape != (0,) and file_mmap != None:
-                            #     del cluster_matrix  # free some memory...
-                            #     os.remove(file_mmap)
 
                     else:
                         for cl_index in cl_indexes:
@@ -494,20 +417,7 @@ class ComputeClustering:
                       + "at {0}".format(datetime.datetime.
                                        fromtimestamp(time.time()).
                                        strftime('%Y-%m-%d %H:%M:%S')))
-        # self.extract_stats()
             
-        return self.labels #, self.clustering_stats
-
-    def compute_canf(self):
-        logging.debug("Starting computing CANF," 
-                      + "at {0}".format(datetime.datetime.
-                                       fromtimestamp(time.time()).
-                                       strftime('%Y-%m-%d %H:%M:%S')))
-        self.labels = canf.CANF(self.D, self.elements)
-        logging.debug("Finished computing CANF," 
-                      + "at {0}".format(datetime.datetime.
-                                       fromtimestamp(time.time()).
-                                       strftime('%Y-%m-%d %H:%M:%S')))
-        return self.labels
+        return self.labels 
 
 
